@@ -97,8 +97,12 @@ app.get('/getData',  (req, res) => {
 
     // 新建一个文件夹
     const baseDir = path.join(__dirname, 'imagesTarget')
+    const copyDir = path.join(__dirname, 'imagesTargetsCopy')
     if (fs.existsSync(baseDir)) { 
       clearDir(baseDir)
+    }
+    if (fs.existsSync(copyDir)) { 
+      clearDir(copyDir)
     }
    
     await fsExtra.ensureDir(baseDir)
@@ -143,7 +147,7 @@ app.get('/getData',  (req, res) => {
           const sourcePath = `${directoryPath}\\${element}`
           const destinationPath = `${baseDir}\\${curDirName}\\${element}`
           console.log('sourcePath'  , sourcePath)
-          console.log('destinationPath'  , destinationPath)
+          console.log('destinationPath', destinationPath)
             // 复制文件
           fsExtra.copy(sourcePath, destinationPath);
           console.log('文件复制成功!');
@@ -165,7 +169,7 @@ app.get('/getData',  (req, res) => {
     // 监听归档流结束  
     archive.pipe(res)
     console.log('baseDir', baseDir)
-    archive.directory(path.join(__dirname, 'imagesTargetsCopy'), false);
+    archive.directory(copyDir, false);
     // 返回压缩包文件流
     archive.finalize();
      // 压缩报错日志
@@ -204,9 +208,13 @@ app.get('/getGoodsData',  (req, res) => {
     // 新建一个文件夹
     const subdirectoryName = 'imagesGoods'
     const baseDir = path.join(__dirname, subdirectoryName)
+    const copyDir = path.join(__dirname, 'imagesGoodsCopy')
    
     if (fs.existsSync(baseDir)) { 
       clearDir(baseDir)
+    }
+    if (fs.existsSync(copyDir)) { 
+      clearDir(copyDir)
     }
     await fsExtra.ensureDir(baseDir) // 确保目录存在  
 
@@ -231,7 +239,7 @@ app.get('/getGoodsData',  (req, res) => {
    
     // 监听归档流结束  
     archive.pipe(res)
-    archive.directory(path.join(__dirname, 'imagesGoodsCopy'), false);
+    archive.directory(copyDir, false);
     // 返回压缩包文件流
     archive.finalize();
      // 压缩报错日志
@@ -252,19 +260,20 @@ app.get('/getNoExistData', async (req, res) => {
     }
     const existImagesObj = {} // 存在的图片
     const noExistImagesObj = {} // 不存在的图片
-    const imageFiles = files.filter(file => {
-      let bol  = false
-      for (const key in target) {
-        if (file.includes(key)) {
-          existImagesObj[key] = target[key]
-          return bol = true
-        } else {
-          noExistImagesObj[key] = target[key]
-          bol = false
-        }
+    console.log('files', files)
+    console.log('target', target)
+  
+
+    Object.keys(target).map(item => {
+      if (files.some(file => file.includes(item))) {
+        existImagesObj[item] = item
+      } else {
+        noExistImagesObj[item] = item
       }
-      return bol
     })
+
+    console.log('existImagesObj', existImagesObj)
+    console.log('noExistImagesObj', noExistImagesObj)
     const data = {
       code: 200,
       data: noExistImagesObj
