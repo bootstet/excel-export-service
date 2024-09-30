@@ -7,6 +7,10 @@ const archiver = require('archiver')
 
 const app = express()
 
+const USER_HOME = process.env.HOME || process.env.USERPROFILE
+// const directoryPath = path.join(USER_HOME, 'Desktop\\images')
+const directoryPath = path.join(__dirname, 'images')
+
 
 /**
  * 删除文件夹下所有问价及将文件夹下所有文件清空
@@ -67,15 +71,11 @@ app.use(cors({
 
 app.get('/getData',  (req, res) => {
   const target = req.query
-
-  const directoryPath = path.join(__dirname, 'images')
-  console.log('directoryPath', directoryPath)
   // node 访问文件系统
   fs.readdir(directoryPath, async (err, files) => {
     if (err) {
-      return res.status(500).send('Unable to scan files!');
+      return res.status(500).send(err);
     }
-    console.log('files', files)
     // const imageFiles = files.filter(file => path.parse(file).name in target);
     console.log('前端传过来的参数target', target)
     const existImagesObj = {} // 存在的图片
@@ -120,15 +120,12 @@ app.get('/getData',  (req, res) => {
       }
       return acc
     }, {})
-    console.log('transformData', transformData)
     // 递归复制图片到中专文件夹
     Object.keys(transformData).map(async (item) => {
       const ind = transformData[item].length
       const curDirName = `${item}.${ind}_共${item * ind}`
-      console.log('curDirName', curDirName)
       try {
         const newPath = `${baseDir}\\${curDirName}`
-        console.log('newPath', newPath)
         // 这段代码会先检查文件夹是否存在，如果存在则清空文件夹内容；如果不存在则创建文件夹。
         if (fs.existsSync(newPath)) {
           fs.readdirSync(newPath).forEach((file) => {
@@ -146,11 +143,8 @@ app.get('/getData',  (req, res) => {
         transformData[item].forEach((element)=> {
           const sourcePath = `${directoryPath}\\${element}`
           const destinationPath = `${baseDir}\\${curDirName}\\${element}`
-          console.log('sourcePath'  , sourcePath)
-          console.log('destinationPath', destinationPath)
             // 复制文件
           fsExtra.copy(sourcePath, destinationPath);
-          console.log('文件复制成功!');
          
         });
         console.log('文件夹创建成功!');
@@ -181,9 +175,6 @@ app.get('/getData',  (req, res) => {
 
 app.get('/getGoodsData',  (req, res) => {
   const target = req.query
-
-  const directoryPath = path.join(__dirname, 'images')
-  console.log('directoryPath', directoryPath)
   // node 访问文件系统
   fs.readdir(directoryPath, async (err, files) => {
     if (err) {
@@ -221,10 +212,9 @@ app.get('/getGoodsData',  (req, res) => {
     const transformData = Object.keys(existImagesObj).map(async (item,index) => {
       const existArr = imageFiles.filter(fileName=> fileName.includes(item))
       const subdirectoryPath = path.join(__dirname, subdirectoryName, `A${index + 1}-${item}-(${Number(existImagesObj[item]) * existArr.length})`)
-      console.log('subdirectoryPath', subdirectoryPath)
       await  fsExtra.ensureDir(subdirectoryPath)
       existArr.forEach(async (element, index) => {
-        const sourcePath = path.join(__dirname, 'images', element)
+        const sourcePath = `${directoryPath}\\${element}`
         const filePath = `${subdirectoryPath}\\${element}`
         await fsExtra.copy(sourcePath, filePath)
       })
@@ -252,7 +242,6 @@ app.get('/getGoodsData',  (req, res) => {
 
 app.get('/getNoExistData', async (req, res) => {
   const target = req.query
-  const directoryPath = path.join(__dirname, 'images')
   // node 访问文件系统
   fs.readdir(directoryPath, async (err, files) => {
     if (err) {
@@ -260,8 +249,6 @@ app.get('/getNoExistData', async (req, res) => {
     }
     const existImagesObj = {} // 存在的图片
     const noExistImagesObj = {} // 不存在的图片
-    console.log('files', files)
-    console.log('target', target)
   
 
     Object.keys(target).map(item => {
@@ -272,8 +259,6 @@ app.get('/getNoExistData', async (req, res) => {
       }
     })
 
-    console.log('existImagesObj', existImagesObj)
-    console.log('noExistImagesObj', noExistImagesObj)
     const data = {
       code: 200,
       data: noExistImagesObj
