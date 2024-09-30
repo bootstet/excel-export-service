@@ -2,9 +2,61 @@ const express = require('express')
 const cors = require('cors');
 const path = require('path')
 const fs = require('fs')
+const fsExtra = require('fs-extra');
 const archiver = require('archiver')
 
 const app = express()
+
+
+/**
+ * 删除文件夹下所有问价及将文件夹下所有文件清空
+ * @param {*} path 
+ */
+function emptyDir(path) {
+  const files = fs.readdirSync(path);
+  files.forEach(file => {
+      const filePath = `${path}/${file}`;
+      const stats = fs.statSync(filePath);
+      if (stats.isDirectory()) {
+          emptyDir(filePath);
+      } else {
+          fs.unlinkSync(filePath);
+          console.log(`删除${file}文件成功`);
+      }
+  });
+}
+
+/**
+* 删除指定路径下的所有空文件夹
+* @param {*} path 
+*/
+function rmEmptyDir(path, level=0) {
+  const files = fs.readdirSync(path);
+  if (files.length > 0) {
+      let tempFile = 0;
+      files.forEach(file => {
+          tempFile++;
+          rmEmptyDir(`${path}/${file}`, 1);
+      });
+      if (tempFile === files.length && level !== 0) {
+          fs.rmdirSync(path);
+      }
+  }
+  else {
+      level !==0 && fs.rmdirSync(path);
+  }
+}
+
+/**
+* 清空指定路径下的所有文件及文件夹
+* @param {*} path 
+*/
+function clearDir(path) {
+  emptyDir(path);
+  rmEmptyDir(path);
+
+}
+
 
 // 中间件，用于解析 JSON 格式的请求体
 app.use(express.json());
@@ -13,85 +65,214 @@ app.use(cors({
   origin: '*' // 指定允许的来源
 }));
 
-app.get('/getData', (req, res) => {
-  console.log('req', req.query)
+app.get('/getData',  (req, res) => {
   const target = req.query
-  // console.log('res', res)
 
   const directoryPath = path.join(__dirname, 'images')
   console.log('directoryPath', directoryPath)
   // node 访问文件系统
-  fs.readdir(directoryPath, (err, files) => {
+  fs.readdir(directoryPath, async (err, files) => {
     if (err) {
       return res.status(500).send('Unable to scan files!');
     }
     console.log('files', files)
     // const imageFiles = files.filter(file => path.parse(file).name in target);
-
+    console.log('前端传过来的参数target', target)
+    const existImagesObj = {} // 存在的图片
+    const noExistImagesObj = {} // 不存在的图片
     const imageFiles = files.filter(file => {
       let bol  = false
+      
       for (const key in target) {
         if (file.includes(key)) {
+          existImagesObj[key] = target[key]
           return bol = true
         } else {
+          noExistImagesObj[key] = target[key]
           bol = false
         }
       }
       return bol
     })
-    
 
-    console.log('imageFiles', imageFiles)
+    // 新建一个文件夹
+    const baseDir = path.join(__dirname, 'imagesTarget')
+    if (fs.existsSync(baseDir)) { 
+      clearDir(baseDir)
+    }
+   
+    await fsExtra.ensureDir(baseDir)
+      
+    // console.log('images文件中存在excel SKC的文件', imageFiles)
+    // console.log('existImagesObj', existImagesObj)
+    // console.log('noExistImagesObj', noExistImagesObj)
 
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', 'attachment; filename=files.zip');
-    // 压缩包实例
-    const archive = archiver('zip', {
-      zlib: { level: 9 } // 压缩级别
-    });
-
-    // 压缩过程
-    archive.on('warning', (err) => {
-      if (err.code === 'ENOENT') {
-        // log warning
+    const transformData = Object.keys(existImagesObj).reduce((acc,cur) => {
+      const val = existImagesObj[cur]
+      if (val in acc) {
+        acc[val] = acc[val].concat(imageFiles.filter(item => item.includes(cur)))
       } else {
-        // throw error
-        throw err;
+        acc[val] = imageFiles.filter(item => item.includes(cur))
       }
-    });
-    // 压缩报错日志
+      return acc
+    }, {})
+    console.log('transformData', transformData)
+    // 递归复制图片到中专文件夹
+    Object.keys(transformData).map(async (item) => {
+      const ind = transformData[item].length
+      const curDirName = `${item}.${ind}_共${item * ind}`
+      console.log('curDirName', curDirName)
+      try {
+        const newPath = `${baseDir}\\${curDirName}`
+        console.log('newPath', newPath)
+        // 这段代码会先检查文件夹是否存在，如果存在则清空文件夹内容；如果不存在则创建文件夹。
+        if (fs.existsSync(newPath)) {
+          fs.readdirSync(newPath).forEach((file) => {
+            const curPath = path.join(newPath, file);
+            if (fs.lstatSync(curPath).isDirectory()) {
+              fs.rmdirSync(curPath, { recursive: true });
+            } else {
+              fs.unlinkSync(curPath);
+            }
+          });
+        } else {
+          fs.mkdirSync(newPath);
+        }
+        // await fsExtra.ensureDir(newPath)
+        transformData[item].forEach((element)=> {
+          const sourcePath = `${directoryPath}\\${element}`
+          const destinationPath = `${baseDir}\\${curDirName}\\${element}`
+          console.log('sourcePath'  , sourcePath)
+          console.log('destinationPath'  , destinationPath)
+            // 复制文件
+          fsExtra.copy(sourcePath, destinationPath);
+          console.log('文件复制成功!');
+         
+        });
+        console.log('文件夹创建成功!');
+      } catch (err) {
+        console.error('创建文件夹时发生错误:', err);
+      }
+    })
+
+    const baseDirCopy = path.join(__dirname, 'imagesTargetsCopy\\images')
+
+    await fsExtra.copy(baseDir, baseDirCopy);
+
+    res.attachment('folder.zip');
+    const archive = archiver('zip');
+   
+    // 监听归档流结束  
+    archive.pipe(res)
+    console.log('baseDir', baseDir)
+    archive.directory(path.join(__dirname, 'imagesTargetsCopy'), false);
+    // 返回压缩包文件流
+    archive.finalize();
+     // 压缩报错日志
     archive.on('error', (err) => {
       throw err;
     });
-    // 压缩res
-    archive.pipe(res);
-
-    const folderPath = 'images'
-
-    imageFiles.forEach((file) => {
-      console.log('filename', file)
-      const baseName =  file.split('.')[0]
-      const filePath = path.join(folderPath, file);
-
-      let keyBaseName = '' 
-      for (const key in target) {
-        if (file.includes(key)) {
-          keyBaseName = key
-        }
-      }
-      // 压缩包中的文件名
-      const downName = `${baseName}-${target[keyBaseName]}.png` 
-      console.log('downName', downName)
-      if (fs.existsSync(filePath)) {
-        archive.append(fs.createReadStream(filePath), { name: downName });
-      } else {
-        console.log(`${file} does not exist`);
-      }
-    });
-    // 返回压缩包文件流
-    archive.finalize();
   });
 })
+
+app.get('/getGoodsData',  (req, res) => {
+  const target = req.query
+
+  const directoryPath = path.join(__dirname, 'images')
+  console.log('directoryPath', directoryPath)
+  // node 访问文件系统
+  fs.readdir(directoryPath, async (err, files) => {
+    if (err) {
+      return res.status(500).send('Unable to scan files!');
+    }
+    const existImagesObj = {} // 存在的图片
+    const noExistImagesObj = {} // 不存在的图片
+    const imageFiles = files.filter(file => {
+      let bol  = false
+      for (const key in target) {
+        if (file.includes(key)) {
+          existImagesObj[key] = target[key]
+          return bol = true
+        } else {
+          noExistImagesObj[key] = target[key]
+          bol = false
+        }
+      }
+      return bol
+    })
+
+    // 新建一个文件夹
+    const subdirectoryName = 'imagesGoods'
+    const baseDir = path.join(__dirname, subdirectoryName)
+   
+    if (fs.existsSync(baseDir)) { 
+      clearDir(baseDir)
+    }
+    await fsExtra.ensureDir(baseDir) // 确保目录存在  
+
+    const transformData = Object.keys(existImagesObj).map(async (item,index) => {
+      const existArr = imageFiles.filter(fileName=> fileName.includes(item))
+      const subdirectoryPath = path.join(__dirname, subdirectoryName, `A${index + 1}-${item}-(${Number(existImagesObj[item]) * existArr.length})`)
+      console.log('subdirectoryPath', subdirectoryPath)
+      await  fsExtra.ensureDir(subdirectoryPath)
+      existArr.forEach(async (element, index) => {
+        const sourcePath = path.join(__dirname, 'images', element)
+        const filePath = `${subdirectoryPath}\\${element}`
+        await fsExtra.copy(sourcePath, filePath)
+      })
+    })
+
+    const baseDirCopy = path.join(__dirname, 'imagesGoodsCopy\\images')
+
+    await fsExtra.copy(baseDir, baseDirCopy);
+
+    res.attachment('folder.zip');
+    const archive = archiver('zip');
+   
+    // 监听归档流结束  
+    archive.pipe(res)
+    archive.directory(path.join(__dirname, 'imagesGoodsCopy'), false);
+    // 返回压缩包文件流
+    archive.finalize();
+     // 压缩报错日志
+    archive.on('error', (err) => {
+      throw err;
+    });
+
+  });
+})
+
+app.get('/getNoExistData', async (req, res) => {
+  const target = req.query
+  const directoryPath = path.join(__dirname, 'images')
+  // node 访问文件系统
+  fs.readdir(directoryPath, async (err, files) => {
+    if (err) {
+      return res.status(500).send('Unable to scan files!');
+    }
+    const existImagesObj = {} // 存在的图片
+    const noExistImagesObj = {} // 不存在的图片
+    const imageFiles = files.filter(file => {
+      let bol  = false
+      for (const key in target) {
+        if (file.includes(key)) {
+          existImagesObj[key] = target[key]
+          return bol = true
+        } else {
+          noExistImagesObj[key] = target[key]
+          bol = false
+        }
+      }
+      return bol
+    })
+    const data = {
+      code: 200,
+      data: noExistImagesObj
+    }
+    res.json(data);
+  });
+})
+
 
 // 开启服务， 监听3001端口
 app.listen(3001, () => {

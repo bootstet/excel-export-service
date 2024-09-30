@@ -2,4 +2,8 @@
 
 # dependencies
 /node_modules
-# /images
+/images
+/imagesGoods
+/imagesGoodsCopy
+/imagesTarget
+/imagesTargetCopy
