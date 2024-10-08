@@ -74,9 +74,11 @@ app.get('/getData',  (req, res) => {
       return acc
     }, {})
     // 递归复制图片到中专文件夹
+    let imageTotal = 0
     Object.keys(transformData).map(async (item) => {
       const ind = transformData[item].length
       const curDirName = `${item}.${ind}_共${item * ind}`
+      imageTotal += item * ind
       try {
         const newPath = `${baseDir}\\${curDirName}`
         // 这段代码会先检查文件夹是否存在，如果存在则清空文件夹内容；如果不存在则创建文件夹。
@@ -106,7 +108,7 @@ app.get('/getData',  (req, res) => {
       }
     })
 
-    const baseDirCopy = path.join(__dirname, 'imagesTargetsCopy\\images')
+    const baseDirCopy = path.join(__dirname, `imagesTargetsCopy\\images_${imageTotal}`)
 
     await fsExtra.copy(baseDir, baseDirCopy);
 
@@ -161,20 +163,23 @@ app.get('/getGoodsData',  (req, res) => {
       clearDir(copyDir)
     }
     await fsExtra.ensureDir(baseDir) // 确保目录存在  
-
+    let imageTotal = 0
     const transformData = Object.keys(existImagesObj).map(async (item,index) => {
       const existArr = imageFiles.filter(fileName=> fileName.includes(item))
-      const subdirectoryPath = path.join(__dirname, subdirectoryName, `A${index + 1}-${item}-(${Number(existImagesObj[item]) * existArr.length})`)
+      const imageNum = Number(existImagesObj[item]) // 每张图片数量
+      const subdirectoryPath = path.join(__dirname, subdirectoryName, `A${index + 1}-${item}-(${imageNum * existArr.length})`)
+      imageTotal += imageNum * existArr.length
       await  fsExtra.ensureDir(subdirectoryPath)
       existArr.forEach(async (element, index) => {
         const sourcePath = `${directoryPath}\\${element}`
-        const filePath = `${subdirectoryPath}\\${element}`
+        const imageName = element.split('.')[0] // 图片名称
+        const postfixName = element.split('.')[1] // 图片后缀
+        const filePath = `${subdirectoryPath}\\${imageName}_${imageNum}.${postfixName}`
         await fsExtra.copy(sourcePath, filePath)
       })
     })
 
-    const baseDirCopy = path.join(__dirname, 'imagesGoodsCopy\\images')
-
+    const baseDirCopy = path.join(__dirname, `imagesGoodsCopy\\images_${imageTotal}`)
     await fsExtra.copy(baseDir, baseDirCopy);
 
     res.attachment('folder.zip');
